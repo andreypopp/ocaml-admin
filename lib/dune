@@ -1,0 +1,12 @@
+(library
+ (name admin)
+ (public_name admin)
+ (flags :standard -open ContainersLabels)
+ (preprocess
+  (pps melange-json-native.ppx))
+ (libraries cmdliner melange-json-native containers unix hmap))
+
+(install
+ (files admin-ssh.py)
+ (section bin)
+ (package admin))
