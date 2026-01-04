@@ -13,16 +13,16 @@ Create a `provision.ml`:
 
 open Admin
 
+let server = target ~use_sudo:true "myserver.example.com"
+
 let () =
-  let server = target ~use_sudo:true "myserver.example.com" in
-  let () =
-    Target.perform_many server [
-      Std.package ~pkg:"caddy";
-      Std.file_content ~remote:"/etc/caddy/Caddyfile" {| :80 { respond "Hello from Caddy!" } |};
-      Std.systemd_enable ~now:true "caddy";
-    ]
-  in
-  main ()
+  Target.configure server [
+    Std.package ~pkg:"caddy";
+    Std.file_content ~remote:"/etc/caddy/Caddyfile" {| :80 { respond "Hello from Caddy!" } |};
+    Std.systemd_enable ~now:true "caddy";
+  ]
+
+let () = main ()
 ```
 
 Then:

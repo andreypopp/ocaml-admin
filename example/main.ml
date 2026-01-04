@@ -41,14 +41,15 @@ let oauth2_proxy ?(version = "7.13.0")
 
 let () =
   let () =
-    Target.perform_many noted
-    @@ Op.annotate_many Std.requires_systemd_daemon_reload true
-    @@ [
-         Std.package ~pkg:"caddy";
-         oauth2_proxy ();
-         Std.file ~remote:"/etc/x" ~chown:"root:root" "./CLAUDE.md";
-       ]
+    Target.configure
+      ~effs:Effs.(empty |> add Std.requires_systemd_daemon_reload true)
+      noted
+      [
+        Std.package ~pkg:"caddy";
+        oauth2_proxy ();
+        Std.file ~remote:"/etc/x" ~chown:"root:root" "./CLAUDE.md";
+      ]
   in
-  Target.perform_many noted
-  @@ [ Std.systemd_daemon_reload (); Std.systemd_enable ~now:true "caddy" ];
+  Target.configure noted
+    [ Std.systemd_daemon_reload (); Std.systemd_enable ~now:true "caddy" ];
   main ()

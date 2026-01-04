@@ -54,11 +54,6 @@ module Command = struct
       (String.concat ~sep:"\n" out.stderr)
 
   let failf out fmt = ksprintf (fun msg -> failwith (to_error out msg)) fmt
-
-  let to_result out msg =
-    if out.exit_code = 0 then Ok out else Error (to_error out msg)
-
-  let to_resultf out fmt = ksprintf (to_result out) fmt
 end
 
 (** SSH plan/output types *)
@@ -218,6 +213,8 @@ module Effs = struct
     | None ->
         let { merge = _; default } = Key.info k in
         default
+
+  let merge t effs = fold (fun (B (k, v)) -> add k v) effs t
 end
 
 type 'a eff = 'a Effs.key
@@ -341,34 +338,11 @@ module Op = struct
 
   let ( let+ ) query apply = Op { query; apply; effs = Effs.empty }
   let ( and+ ) = Query.( and+ )
-  let annotate eff v (Op op) = Op { op with effs = Effs.add eff v op.effs }
-  let annotate_many eff v ops = List.map ops ~f:(annotate eff v)
+  let annotate effs (Op op) = Op { op with effs = Effs.merge op.effs effs }
 end
 
 (** Target represents a remote machine. *)
-module Target : sig
-  type t
-
-  val make : ?use_sudo:bool -> string -> t
-  (** Create a target given its hostname. *)
-
-  val hostname : t -> string
-  (** Get the hostname of the target. *)
-
-  val perform : t -> Op.t -> unit
-  (** Register an operation to be performed on the target. *)
-
-  val perform_many : t -> Op.t list -> unit
-  (** Register an operation to be performed on the target. *)
-
-  val query_plan : t -> string * Ssh_plan.host_plan
-  (** Get the query plan for the target. *)
-
-  val apply_plan :
-    t -> Ssh_output.commands -> (string * Ssh_plan.host_plan) option
-  (** Given the SSH output after executing the query plan, get the apply plan.
-  *)
-end = struct
+module Target = struct
   type t = {
     hostname : string;
     use_sudo : bool;
@@ -380,8 +354,11 @@ end = struct
     { hostname; rev_ops = []; effs = Effs.empty; use_sudo }
 
   let hostname t = t.hostname
-  let perform t op = t.rev_ops <- op :: t.rev_ops
-  let perform_many t ops = List.iter ops ~f:(perform t)
+
+  let configure_one ?(effs = Effs.empty) t op =
+    t.rev_ops <- Op.annotate effs op :: t.rev_ops
+
+  let configure ?effs t ops = List.iter ops ~f:(configure_one ?effs t)
 
   let cmd_with_sudo t (cmd : Ssh_plan.command) =
     { cmd with Command.use_sudo = cmd.use_sudo || t.use_sudo }
@@ -425,9 +402,7 @@ end = struct
           let () =
             match (!tasks, Effs.is_empty effs) with
             | [], _ | _, true -> ()
-            | _ ->
-                t.effs <-
-                  Effs.fold (fun (Effs.B (k, v)) -> Effs.add k v) effs t.effs
+            | _ -> t.effs <- Effs.merge t.effs effs
           in
           List.rev !tasks)
       |> List.flatten

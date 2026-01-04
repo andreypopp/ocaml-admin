@@ -7,25 +7,34 @@ module Command : sig
 
   val failf : output -> ('a, unit, string, 'b) format4 -> 'a
   (** Fail with a formatted error message including command output. *)
-
-  val to_result : output -> string -> (output, string) result
-  (** Convert command output to a result, returning [Ok output] if the exit code
-      is zero, or [Error msg] otherwise, where [msg] is a formatted error
-      message including command output. *)
-
-  val to_resultf :
-    output -> ('a, unit, string, (output, string) result) format4 -> 'a
-  (** Like {!to_result} but with a formatted error message. *)
 end
 
 type 'a eff
-(** Operations, can produce effects which we later can handle. *)
+(** Operations can define what effects they have, later operations might query
+    for effects and adapt their behavior accordingly.
+
+    A simple example is an operation that modifies a systemd unit file and a
+    later operation for reloading the systemd daemon if needed. *)
+
+module Effs : sig
+  type t
+  (** a set of effects *)
+
+  val empty : t
+  (** An empty set of effects. *)
+
+  val add : 'a eff -> 'a -> t -> t
+  (** Adds an effect with a value to the set of effects. *)
+
+  val merge : t -> t -> t
+  (** Merges two sets of effects. *)
+end
 
 val define_list : unit -> 'a list eff
-(** Define a new effect which collects a list of values. *)
+(** Define an effect which holds a list of values. *)
 
 val define_flag : unit -> bool eff
-(** Define a new effect which is just a flag (present or not). *)
+(** Define an effect which holds a boolean flag. *)
 
 (** Query remote hosts. *)
 module Query : sig
@@ -76,11 +85,8 @@ module Op : sig
   val ( let+ ) : 'a Query.t -> ('a -> unit) -> t
   val ( and+ ) : 'a Query.t -> 'b Query.t -> ('a * 'b) Query.t
 
-  val annotate : 'a eff -> 'a -> t -> t
-  (** Annotate an operation with an effect. *)
-
-  val annotate_many : 'a eff -> 'a -> t list -> t list
-  (** Annotate many operations with an effect. *)
+  val annotate : Effs.t -> t -> t
+  (** Annotate an operation with effects. *)
 end
 
 (** A target host. *)
@@ -89,11 +95,8 @@ module Target : sig
 
   val make : ?use_sudo:bool -> string -> t
 
-  val perform : t -> Op.t -> unit
-  (** Perform an operation on the target. *)
-
-  val perform_many : t -> Op.t list -> unit
-  (** Register an operation to be performed on the target. *)
+  val configure : ?effs:Effs.t -> t -> Op.t list -> unit
+  (** Configure the target by executing the given operations. *)
 end
 
 (** Standard library of queries and operations. *)
